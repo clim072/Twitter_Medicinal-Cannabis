@@ -1,0 +1,694 @@
+---
+title: "GDRF Project: Medicinal Cannabis on Twitter"
+author: "Carmen Lim"
+date: "6/21/2021"
+output: 
+  html_document:
+    theme: journal
+    toc: yes
+    toc_float: yes
+---
+
+
+<style>
+
+#TOC {
+ position: fixed;
+  left: 0;
+  top: 0;
+  width: 200px;
+  height: 400%;
+  overflow:auto;
+}
+body {
+  max-width: 3000px;
+  margin: auto;
+  margin-left:50px;
+  margin-right:50px;
+  line-height: 20px;
+}
+h1.title {
+    font-size: 32px;
+}
+h4 {
+    font-size: 15px;
+}
+h3 {
+    font-size: 16px;
+}
+h2 {
+    font-size: 20px;
+}
+h1 {
+    font-size: 30px;
+}
+.center {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    width: 28%;
+}
+.table {
+    width: 40%;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(tm)
+library(topicmodels)
+library(wordcloud)
+library(tidytext)
+library(syuzhet)
+library(quanteda)
+library(quanteda.textplots)
+library(stm)
+library(NLP)
+library(RColorBrewer)
+library(SnowballC)
+library(httr)
+library(DT)
+library(RWeka)
+```
+ 
+<br>
+<br>
+
+## Sample tweets using twarc
+
+<br>
+<br>
+
+```{r clean}
+tweets <-read.csv("Final.csv")
+#tweets[1:5,c("text")]
+datatable(tweets[,c("text","location1")])
+```
+
+
+## Tweets location
+
+<br>
+<br>
+
+```{r, message = FALSE,fig.height=15}
+#tweets$text <- sub("RT.*:", "", tweets$text)
+tweets %>%
+  count(location1, sort = TRUE) %>%
+  mutate(location1 = reorder(location1, n)) %>%
+  top_n(30) %>%
+  ggplot(aes(x = location1, y = n)) +
+  geom_col() +
+  coord_flip() +
+      labs(x = "Count",
+      y = "Location")
+tweets %>%
+  filter(location1 == "USA") %>%
+  filter(!is.na(state)) %>%
+  count(state, sort = TRUE) %>%
+  mutate(state = reorder(state, n)) %>%
+  top_n(52) %>%
+  ggplot(aes(x = state, y = n)) +
+  geom_col() +
+  coord_flip() +
+      labs(x = "Count",
+      y = "Location")
+```
+
+```{r, message = FALSE, warning = FALSE}
+topic<-function(x){
+tweets1 <- tweets %>%
+  filter(location1== x)
+
+tweet1 <- iconv(tweets1$text, to = "ASCII", sub = " ") 
+tweet1 <- tolower(tweet1)
+tweet1 <- gsub("rt", " ", tweet1)  # Remove the "RT" (retweet) so duplicates are duplicates
+tweet1 <- gsub("@\\w+", " ", tweet1)  # Remove user names (all proper names if you're wise!)
+tweet1 <- gsub("http.+ |http.+$", " ", tweet1)  # Remove links
+tweet1 <- gsub("[[:punct:]]", " ", tweet1)  # Remove punctuation
+tweet1 <- gsub("[ |\t]{2,}", " ", tweet1)  # Remove tabs
+tweet1 <- gsub("amp", " ", tweet1)  # "&" is "&amp" in HTML, so after punctuation removed ...
+tweet1 <- gsub("^ ", "", tweet1)  # Leading blanks
+tweet1 <- gsub(" $", "", tweet1)  # Lagging blanks
+tweet1 <- gsub(" +", " ", tweet1) # General spaces (should just do all whitespaces no?)
+tweet1 <- unique(tweet1)  # Now get rid of duplicates!
+
+corpus <- Corpus(VectorSource(tweet1))  # Create corpus object
+mystopwords <- c(stopwords("en"), "marijuana", "cannabis", "medicinal", "medical")
+#corpus <- tm_map(corpus, removeWords, stopwords("en") )  
+corpus <- tm_map(corpus, removeWords, mystopwords )  
+
+pal <- brewer.pal(8, "Dark2")
+wordcloud(corpus, min.freq=2, max.words = 50, random.order = TRUE, col = pal)
+
+doc.lengths <- rowSums(as.matrix(DocumentTermMatrix(corpus)))
+dtm <- DocumentTermMatrix(corpus[doc.lengths > 0])
+# model <- LDA(dtm, 10)  
+SEED = sample(1:1000000, 1)  
+k = 5  # 5 topics
+
+models <- list(
+  CTM       = CTM(dtm, k = k, control = list(seed = SEED, var = list(tol = 10^-4), em = list(tol = 10^-3))),
+  VEM       = LDA(dtm, k = k, control = list(seed = SEED)),
+  VEM_Fixed = LDA(dtm, k = k, control = list(estimate.alpha = FALSE, seed = SEED)),
+  Gibbs     = LDA(dtm, k = k, method = "Gibbs", control = list(seed = SEED, burnin = 1000,
+                                                               thin = 100,    iter = 1000))
+)
+
+lapply(models, terms, 10)
+
+}
+```
+
+<br>
+<br>
+
+## 1. Australia
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Australia")
+```  
+
+<br>
+<br>
+
+```{r, include = FALSE, message = FALSE}
+topic<-function(x){
+tweets1 <- tweets %>%
+  filter(state== x)
+
+tweet1 <- iconv(tweets1$text, to = "ASCII", sub = " ") 
+tweet1 <- tolower(tweet1)
+tweet1 <- gsub("rt", " ", tweet1)  # Remove the "RT" (retweet) so duplicates are duplicates
+tweet1 <- gsub("@\\w+", " ", tweet1)  # Remove user names (all proper names if you're wise!)
+tweet1 <- gsub("http.+ |http.+$", " ", tweet1)  # Remove links
+tweet1 <- gsub("[[:punct:]]", " ", tweet1)  # Remove punctuation
+tweet1 <- gsub("[ |\t]{2,}", " ", tweet1)  # Remove tabs
+tweet1 <- gsub("amp", " ", tweet1)  # "&" is "&amp" in HTML, so after punctuation removed ...
+tweet1 <- gsub("^ ", "", tweet1)  # Leading blanks
+tweet1 <- gsub(" $", "", tweet1)  # Lagging blanks
+tweet1 <- gsub(" +", " ", tweet1) # General spaces (should just do all whitespaces no?)
+tweet1 <- unique(tweet1)  # Now get rid of duplicates!
+
+corpus <- Corpus(VectorSource(tweet1))  # Create corpus object
+mystopwords <- c(stopwords("en"), "marijuana", "cannabis", "medicinal", "medical")
+#corpus <- tm_map(corpus, removeWords, stopwords("en") )  
+corpus <- tm_map(corpus, removeWords, mystopwords )  
+
+pal <- brewer.pal(8, "Dark2")
+wordcloud(corpus, min.freq=2, max.words = 50, random.order = TRUE, col = pal)
+
+BigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+tdm.bigram = TermDocumentMatrix(corpus,
+control = list(tokenize = BigramTokenizer))
+
+freq = sort(rowSums(as.matrix(tdm.bigram)),decreasing = TRUE)
+freq.df = data.frame(word=names(freq), freq=freq)
+head(freq.df, 20)
+pal=pal[-(1:3)]
+wordcloud(freq.df$word,freq.df$freq,max.words=100,random.order = F, colors=pal)
+
+doc.lengths <- rowSums(as.matrix(DocumentTermMatrix(corpus)))
+dtm <- DocumentTermMatrix(corpus[doc.lengths > 0])
+# model <- LDA(dtm, 10)  
+SEED = sample(1:1000000, 1)  
+k = 5  # 5 topics
+
+models <- list(
+  CTM       = CTM(dtm, k = k, control = list(seed = SEED, var = list(tol = 10^-4), em = list(tol = 10^-3))),
+  VEM       = LDA(dtm, k = k, control = list(seed = SEED)),
+  VEM_Fixed = LDA(dtm, k = k, control = list(estimate.alpha = FALSE, seed = SEED)),
+  Gibbs     = LDA(dtm, k = k, method = "Gibbs", control = list(seed = SEED, burnin = 1000,
+                                                               thin = 100,    iter = 1000))
+)
+
+lapply(models, terms, 10)
+}
+```
+
+<br>
+<br>
+
+## ALABAMA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Alabama")
+```  
+
+<br>
+<br>
+
+## ALASKA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Alaska")
+```  
+
+<br>
+<br>
+
+## ARIZONA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Arizona")
+```  
+
+<br>
+<br>
+
+## ARKANSAS
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Arkansas")
+```  
+
+<br>
+<br>
+
+## CALIFORNIA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("California")
+```  
+
+<br>
+<br>
+
+## COLORADO
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Colorado")
+```  
+
+<br>
+<br>
+
+## CONNECTICUT
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Connecticut")
+```  
+
+<br>
+<br>
+
+## DELAWARE
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Delaware")
+```  
+
+<br>
+<br>
+
+## DC
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("DC")
+```  
+
+<br>
+<br>
+
+## FLORIDA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Florida")
+```  
+
+<br>
+<br>
+
+## GEORGIA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Georgia")
+```  
+
+<br>
+<br>
+
+## HAWAII
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Hawaii")
+```  
+
+<br>
+<br>
+
+## IDAHO
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Idaho")
+```  
+
+<br>
+<br>
+
+## ILLINOIS
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Illinois")
+```  
+
+<br>
+<br>
+
+## INDIANA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Indiana")
+```  
+
+<br>
+<br>
+
+## IOWA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Iowa")
+```  
+
+<br>
+<br>
+
+## KANSAS
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Kansas")
+```  
+
+<br>
+<br>
+
+## KENTUCKY
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Kentucky")
+```  
+
+<br>
+<br>
+
+## LOUISIANA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Louisiana")
+```  
+
+<br>
+<br>
+
+## MAINE
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Maine")
+```  
+
+<br>
+<br>
+
+## MARYLAND
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Maryland")
+```  
+
+<br>
+<br>
+
+## MASSACHUSETTS
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Massachusetts")
+```  
+
+<br>
+<br>
+
+## MICHIGAN
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Michigan")
+```  
+
+<br>
+<br>
+
+## MINNESOTA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Minnesota")
+```  
+
+<br>
+<br>
+
+## MISSISSIPPI
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Mississippi")
+```  
+
+<br>
+<br>
+
+## MISSOURI
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Missouri")
+```  
+
+<br>
+<br>
+
+## MONTANA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Montana")
+```  
+
+<br>
+<br>
+
+## NEBRASKA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Nebraska")
+```  
+
+<br>
+<br>
+
+## NEVADA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Nevada")
+```  
+
+<br>
+<br>
+
+## NEW HAMPSHIRE
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("New Hampshire")
+```  
+
+<br>
+<br>
+
+## NEW JERSEY
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("New Jersey")
+```  
+
+<br>
+<br>
+
+## NEW MEXICO
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("New Mexico")
+```  
+
+<br>
+<br>
+
+## NEW YORK
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("New York")
+```  
+
+<br>
+<br>
+
+## North Carolina
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("North Carolina")
+```  
+
+<br>
+<br>
+
+## NORTH DAKOTA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("North Dakota")
+```  
+
+<br>
+<br>
+
+## OHIO
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Ohio")
+```  
+
+<br>
+<br>
+
+## OKLAHOMA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Oklahoma")
+```  
+
+<br>
+<br>
+
+## OREGON
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Oregon")
+```  
+
+<br>
+<br>
+
+## PENNSYLVANIA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Pennsylvania")
+```  
+
+<br>
+<br>
+
+
+## RHODE ISLAND
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Rhode Island")
+```  
+
+<br>
+<br>
+
+## SOUTH CAROLINA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("South Carolina")
+```  
+
+<br>
+<br>
+
+## SOUTH DAKOTA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("South Dakota")
+```  
+
+<br>
+<br>
+
+## TENNESSEE
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Tennessee")
+```  
+
+<br>
+<br>
+
+## TEXAS
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Texas")
+```  
+
+<br>
+<br>
+
+## UTAH
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Utah")
+```  
+
+<br>
+<br>
+
+## VERMONT
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Vermont")
+```  
+
+<br>
+<br>
+
+##VIRGINIA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Virginia")
+```  
+
+<br>
+<br>
+
+## WASHINGTON
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Washington")
+```  
+
+<br>
+<br>
+
+## WEST VIRGINIA
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("West Virginia")
+```  
+
+<br>
+<br>
+
+## WISCONSIN
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Wisconsin")
+```  
+
+<br>
+<br>
+
+## WYOMING
+
+```{r, echo = FALSE, INCLUDE = FALSE, message = FALSE }
+topic("Wyoming")
+```  
+
+<br>
+<br>
